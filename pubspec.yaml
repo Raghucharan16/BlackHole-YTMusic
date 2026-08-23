@@ -18,7 +18,7 @@ dependencies:
       url: https://github.com/Raghucharan16/Audiotagger
       ref: c3f508aa92b1574385cb5a3d360b6a056676f63b
   # bitsdojo_window: ^0.1.1+1 #For Desktops
-  cached_network_image: ^3.2.3
+  cached_network_image: ^3.3.1
   carousel_slider: ^4.2.1
   connectivity_plus: ^4.0.1
   cupertino_icons: ^1.0.5
@@ -29,6 +29,9 @@ dependencies:
   flutter:
     sdk: flutter
   flutter_archive: ^5.0.0
+  # Pinned to match metadata_god 0.4.1's generated bridge code (newer frb
+  # requires a parseErrorData arg its codegen doesn't pass).
+  flutter_rust_bridge: 1.77.0
   flutter_displaymode: ^0.6.0
   # flutter_downloader: ^1.7.1
   flutter_localizations:
