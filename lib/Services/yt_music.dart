@@ -22,6 +22,7 @@ import 'dart:convert';
 import 'package:blackhole/Helpers/extensions.dart';
 import 'package:blackhole/Services/ytmusic/nav.dart';
 import 'package:blackhole/Services/ytmusic/playlist.dart';
+import 'package:hive/hive.dart';
 import 'package:http/http.dart';
 import 'package:logging/logging.dart';
 
@@ -610,53 +611,118 @@ class YtMusicService {
     return days;
   }
 
+  // Resolves a playable song via the InnerTube player using the ANDROID_VR
+  // client. That client returns direct (un-ciphered, PoToken-free) stream
+  // URLs, so no signature deciphering or youtube_explode is required.
   Future<Map> getSongData({required String videoId}) async {
-    if (headers == null) {
-      await init();
-    }
+    const String vrUserAgent =
+        'com.google.android.apps.youtube.vr.oculus/1.56.21 '
+        '(Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1) gzip';
     try {
-      signatureTimestamp = signatureTimestamp ?? getDatestamp() - 1;
-      final body = Map.from(context!);
-      body['playbackContext'] = {
-        'contentPlaybackContext': {'signatureTimestamp': signatureTimestamp},
+      final Uri uri =
+          Uri.https('youtubei.googleapis.com', '/youtubei/v1/player');
+      final Map<String, dynamic> body = {
+        'context': {
+          'client': {
+            'clientName': 'ANDROID_VR',
+            'clientVersion': '1.56.21',
+            'deviceMake': 'Oculus',
+            'deviceModel': 'Quest 3',
+            'androidSdkVersion': 32,
+            'hl': 'en',
+            'gl': 'US',
+            'userAgent': vrUserAgent,
+          },
+        },
+        'videoId': videoId,
+        'contentCheckOk': true,
+        'racyCheckOk': true,
       };
-      body['video_id'] = videoId;
-      final Map response =
-          await sendRequest(endpoints['get_song']!, body, headers);
-      int maxBitrate = 0;
-      String? url;
-      final formats = await nav(response, ['streamingData', 'formats']) as List;
-      for (final element in formats) {
-        if (element['bitrate'] != null) {
-          if (int.parse(element['bitrate'].toString()) > maxBitrate) {
-            maxBitrate = int.parse(element['bitrate'].toString());
-            url = element['signatureCipher'].toString();
-          }
-        }
+      final response = await post(
+        uri,
+        headers: {
+          'content-type': 'application/json',
+          'user-agent': vrUserAgent,
+          'X-Goog-Api-Format-Version': '2',
+        },
+        body: jsonEncode(body),
+      );
+      if (response.statusCode != 200) {
+        Logger.root
+            .severe('getSongData player returned ${response.statusCode}');
+        return {};
       }
-      // final adaptiveFormats =
-      //     await nav(response, ['streamingData', 'adaptiveFormats']) as List;
-      // for (final element in adaptiveFormats) {
-      //   if (element['bitrate'] != null) {
-      //     if (int.parse(element['bitrate'].toString()) > maxBitrate) {
-      //       maxBitrate = int.parse(element['bitrate'].toString());
-      //       url = element['signatureCipher'].toString();
-      //     }
-      //   }
-      // }
-      final videoDetails = await nav(response, ['videoDetails']) as Map;
-      final reg = RegExp('url=(.*)');
-      final matches = reg.firstMatch(url!);
-      final String result = matches!.group(1).toString().unescape();
+      final Map data = json.decode(response.body) as Map;
+      final String playability =
+          nav(data, ['playabilityStatus', 'status'])?.toString() ?? '';
+      final List formats = [
+        ...(nav(data, ['streamingData', 'adaptiveFormats']) as List? ?? []),
+        ...(nav(data, ['streamingData', 'formats']) as List? ?? []),
+      ];
+      final List audioFormats = formats
+          .where(
+            (e) =>
+                e['url'] != null &&
+                e['bitrate'] != null &&
+                e['mimeType'].toString().startsWith('audio'),
+          )
+          .toList();
+      if (audioFormats.isEmpty) {
+        Logger.root
+            .severe('getSongData: no direct audio url (status: $playability)');
+        return {};
+      }
+      audioFormats.sort(
+        (a, b) => int.parse(a['bitrate'].toString())
+            .compareTo(int.parse(b['bitrate'].toString())),
+      );
+      final String lowUrl = audioFormats.first['url'].toString();
+      final String highUrl = audioFormats.last['url'].toString();
+      final String ytQuality =
+          Hive.box('settings').get('ytQuality', defaultValue: 'Low').toString();
+      final String finalUrl = ytQuality == 'High' ? highUrl : lowUrl;
+      final String expireAt =
+          RegExp('expire=(.*?)&').firstMatch(finalUrl)?.group(1) ??
+              ((DateTime.now().millisecondsSinceEpoch ~/ 1000) + 3600 * 5)
+                  .toString();
+      final Map videoDetails = (nav(data, ['videoDetails']) as Map?) ?? {};
+      final List thumbs =
+          (nav(videoDetails, ['thumbnail', 'thumbnails']) as List?) ?? [];
+      final String image =
+          thumbs.isNotEmpty ? thumbs.last['url'].toString() : '';
+      try {
+        await Hive.box('ytlinkcache').put(videoId, {
+          'url': finalUrl,
+          'expire_at': expireAt,
+          'lowUrl': lowUrl,
+          'highUrl': highUrl,
+        });
+      } catch (_) {}
       return {
-        'id': videoDetails['videoId'],
-        'title': videoDetails['title'],
-        'artist': videoDetails['author'],
-        'duration': videoDetails['lengthSeconds'],
-        'url': result,
+        'id': videoDetails['videoId'] ?? videoId,
+        'title': videoDetails['title'] ?? '',
+        'artist': (videoDetails['author'] ?? '')
+            .toString()
+            .replaceAll('- Topic', '')
+            .trim(),
+        'album': '',
+        'duration': videoDetails['lengthSeconds']?.toString(),
+        'url': finalUrl,
+        'lowUrl': lowUrl,
+        'highUrl': highUrl,
+        'expire_at': expireAt,
+        'image': image,
+        'images': thumbs.map((e) => e['url']).toList(),
+        'language': 'YouTube',
+        'genre': 'YouTube',
+        'year': '',
+        '320kbps': 'false',
+        'has_lyrics': 'false',
+        'release_date': '',
+        'album_id': videoDetails['channelId'] ?? '',
+        'subtitle': videoDetails['author'] ?? '',
+        'perma_url': 'https://youtube.com/watch?v=$videoId',
         'views': videoDetails['viewCount'],
-        'image': videoDetails['thumbnail']['thumbnails'].last['url'],
-        'images': videoDetails['thumbnail']['thumbnails'].map((e) => e['url']),
       };
     } catch (e) {
       Logger.root.severe('Error in yt get song data', e);

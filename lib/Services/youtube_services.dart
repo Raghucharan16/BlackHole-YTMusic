@@ -20,6 +20,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:blackhole/Services/yt_music.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:html_unescape/html_unescape_small.dart';
 import 'package:http/http.dart';
@@ -57,48 +58,45 @@ class YouTubeServices {
     }
   }
 
+  // Resolve a playable song via the InnerTube ANDROID_VR player
+  // (YtMusicService.getSongData) instead of youtube_explode, whose stream
+  // extraction no longer works on the pinned version. Any metadata already
+  // known (from a search/playlist item, passed via [data]) is preferred.
   Future<Map?> formatVideoFromId({
     required String id,
     Map? data,
     bool? getUrl,
   }) async {
-    final Video? vid = await getVideoFromId(id);
-    if (vid == null) {
+    final Map songData = await YtMusicService().getSongData(videoId: id);
+    if (songData.isEmpty || songData['url'].toString().isEmpty) {
       return null;
     }
-    final Map? response = await formatVideo(
-      video: vid,
-      quality: Hive.box('settings')
-          .get(
-            'ytQuality',
-            defaultValue: 'Low',
-          )
-          .toString(),
-      data: data,
-      getUrl: getUrl ?? true,
-      // preferM4a: Hive.box(
-      //         'settings')
-      //     .get('preferM4a',
-      //         defaultValue:
-      //             true) as bool
-    );
-    return response;
+    if (data != null) {
+      if ((data['title']?.toString() ?? '').isNotEmpty) {
+        songData['title'] = data['title'];
+      }
+      if ((data['artist']?.toString() ?? '').isNotEmpty) {
+        songData['artist'] = data['artist'];
+      }
+      if ((data['album']?.toString() ?? '').isNotEmpty) {
+        songData['album'] = data['album'];
+      }
+      if ((data['image']?.toString() ?? '').isNotEmpty) {
+        songData['image'] = data['image'];
+      }
+      if (data['subtitle'] != null) {
+        songData['subtitle'] = data['subtitle'];
+      }
+    }
+    return songData;
   }
 
   Future<Map?> refreshLink(String id) async {
-    final Video? res = await getVideoFromId(id);
-    if (res == null) {
+    final Map songData = await YtMusicService().getSongData(videoId: id);
+    if (songData.isEmpty || songData['url'].toString().isEmpty) {
       return null;
     }
-    String quality;
-    try {
-      quality =
-          Hive.box('settings').get('quality', defaultValue: 'Low').toString();
-    } catch (e) {
-      quality = 'Low';
-    }
-    final Map? data = await formatVideo(video: res, quality: quality);
-    return data;
+    return songData;
   }
 
   Future<Playlist> getPlaylistDetails(String id) async {
@@ -557,16 +555,8 @@ class YouTubeServices {
     Video video,
     // {bool preferM4a = true}
   ) async {
-    // Use PoToken-free clients (androidVr / ios) so audio streams resolve
-    // without the watch-page challenge that broke playback on older versions.
     final StreamManifest manifest =
-        await yt.videos.streamsClient.getManifest(
-      video.id,
-      ytClients: [
-        YoutubeApiClient.androidVr,
-        YoutubeApiClient.ios,
-      ],
-    );
+        await yt.videos.streamsClient.getManifest(video.id);
     final List<AudioOnlyStreamInfo> sortedStreamInfo =
         manifest.audioOnly.sortByBitrate();
     if (Platform.isIOS || Platform.isMacOS) {
