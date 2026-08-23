@@ -57,10 +57,10 @@ dependencies:
   sliding_up_panel: ^2.0.0+1
   url_launcher: ^6.1.11
   uuid: ^3.0.7
-  # Pinned to 3.0.0: it has the modern watch-page extractor/challenge handling
-  # but (unlike 3.0.1+) does not require path ^1.9.1, so it stays compatible
-  # with the Flutter SDK used to build this app.
-  youtube_explode_dart: 3.0.0
+  # 2.5.3 has the modern watch-page extractor but only needs collection ^1.18.0
+  # (no crypto>=3.0.4/Dart 3.4 or path ^1.9.1 requirement), so it resolves on
+  # the Dart 3.2 / Flutter 3.16.9 toolchain used to build this app.
+  youtube_explode_dart: ^2.5.3
 
 dev_dependencies:
   flutter_test:
