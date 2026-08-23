@@ -481,7 +481,7 @@ class YouTubeServices {
   }
 
   Future<List<Map>> fetchSearchResults(String query) async {
-    final List<Video> searchResults = await yt.search.search(query);
+    final searchResults = await yt.search.search(query);
     final List<Map> videoResult = [];
     for (final Video vid in searchResults) {
       final res = await formatVideo(video: vid, quality: 'High', getUrl: false);
@@ -557,8 +557,16 @@ class YouTubeServices {
     Video video,
     // {bool preferM4a = true}
   ) async {
+    // Use PoToken-free clients (androidVr / ios) so audio streams resolve
+    // without the watch-page challenge that broke playback on older versions.
     final StreamManifest manifest =
-        await yt.videos.streamsClient.getManifest(video.id);
+        await yt.videos.streamsClient.getManifest(
+      video.id,
+      ytClients: [
+        YoutubeApiClient.androidVr,
+        YoutubeApiClient.ios,
+      ],
+    );
     final List<AudioOnlyStreamInfo> sortedStreamInfo =
         manifest.audioOnly.sortByBitrate();
     if (Platform.isIOS || Platform.isMacOS) {
