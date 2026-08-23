@@ -51,7 +51,7 @@ dependencies:
   palette_generator: ^0.3.3+2
   path_provider: ^2.0.15
   permission_handler: ^10.3.0
-  receive_sharing_intent: ^1.4.5
+  receive_sharing_intent: ^1.8.0
   salomon_bottom_bar: ^3.3.2
   share_plus: ^7.0.2
   sliding_up_panel: ^2.0.0+1
