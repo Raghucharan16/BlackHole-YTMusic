@@ -75,9 +75,7 @@ class YtMusicService {
     return {
       'user-agent': userAgent,
       'accept': '*/*',
-      'accept-encoding': 'gzip, deflate',
       'content-type': 'application/json',
-      'content-encoding': 'gzip',
       'origin': httpsYtmDomain,
       'cookie': 'CONSENT=YES+1'
     };

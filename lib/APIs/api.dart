@@ -25,6 +25,8 @@ import 'package:http/http.dart';
 import 'package:logging/logging.dart';
 
 class SaavnAPI {
+  // Temporary diagnostic: last error/status seen while loading the home feed.
+  static String lastHomeDiag = '';
   List preferredLanguages = Hive.box('settings')
       .get('preferredLanguage', defaultValue: ['Hindi']) as List;
   Map<String, String> headers = {};
@@ -95,6 +97,7 @@ class SaavnAPI {
       });
     }
     return get(url, headers: headers).onError((error, stackTrace) {
+      lastHomeDiag = 'network error: $error';
       return Response(
         {
           'status': 'failure',
@@ -110,10 +113,15 @@ class SaavnAPI {
     try {
       final res = await getResponse(endpoints['homeData']!);
       if (res.statusCode == 200) {
+        lastHomeDiag = '';
         final Map data = json.decode(res.body) as Map;
         result = await FormatResponse.formatHomePageData(data);
+      } else {
+        lastHomeDiag = 'HTTP ${res.statusCode} from JioSaavn'
+            '${lastHomeDiag.isEmpty ? '' : ' ($lastHomeDiag)'}';
       }
     } catch (e) {
+      lastHomeDiag = 'parse error: $e';
       Logger.root.severe('Error in fetchHomePageData: $e');
     }
     return result;

@@ -147,8 +147,32 @@ class _SaavnHomePageState extends State<SaavnHomePage>
       playlistIndex = 0;
     }
     return (data.isEmpty && recentList.isEmpty)
-        ? const Center(
-            child: CircularProgressIndicator(),
+        ? Center(
+            child: SaavnAPI.lastHomeDiag.isEmpty
+                ? const CircularProgressIndicator()
+                : Padding(
+                    padding: const EdgeInsets.all(24.0),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Text('Home failed to load'),
+                        const SizedBox(height: 8),
+                        Text(
+                          SaavnAPI.lastHomeDiag,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                        const SizedBox(height: 16),
+                        ElevatedButton(
+                          onPressed: () {
+                            fetched = false;
+                            setState(() {});
+                          },
+                          child: const Text('Retry'),
+                        ),
+                      ],
+                    ),
+                  ),
           )
         : ListView.builder(
             physics: const BouncingScrollPhysics(),

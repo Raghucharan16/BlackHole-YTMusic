@@ -27,6 +27,8 @@ import 'package:logging/logging.dart';
 import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 
 class YouTubeServices {
+  // Temporary diagnostic: last error/status seen while loading the YT home feed.
+  static String lastHomeDiag = '';
   static const String searchAuthority = 'www.youtube.com';
   static const Map paths = {
     'search': '/results',
@@ -112,11 +114,18 @@ class YouTubeServices {
     try {
       final Response response = await get(link);
       if (response.statusCode != 200) {
+        lastHomeDiag = 'HTTP ${response.statusCode} from youtube.com/music';
         return {};
       }
-      final String searchResults =
+      final RegExpMatch? match =
           RegExp(r'(\"contents\":{.*?}),\"metadata\"', dotAll: true)
-              .firstMatch(response.body)![1]!;
+              .firstMatch(response.body);
+      if (match == null) {
+        lastHomeDiag =
+            'could not find contents in youtube.com/music page (body ${response.body.length} chars)';
+        return {};
+      }
+      final String searchResults = match[1]!;
       final Map data = json.decode('{$searchResults}') as Map;
 
       final List result = data['contents']['twoColumnBrowseResultsRenderer']
@@ -173,8 +182,10 @@ class YouTubeServices {
       final List finalHeadResult = formatHeadItems(headResult);
       finalResult.removeWhere((element) => element == null);
 
+      lastHomeDiag = '';
       return {'body': finalResult, 'head': finalHeadResult};
     } catch (e) {
+      lastHomeDiag = 'parse error: $e';
       Logger.root.severe('Error in getMusicHome: $e');
       return {};
     }

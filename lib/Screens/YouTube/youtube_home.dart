@@ -114,8 +114,42 @@ class _YouTubeState extends State<YouTube>
       body: Stack(
         children: [
           if (searchedList.isEmpty)
-            const Center(
-              child: CircularProgressIndicator(),
+            Center(
+              child: YouTubeServices.lastHomeDiag.isEmpty
+                  ? const CircularProgressIndicator()
+                  : Padding(
+                      padding: const EdgeInsets.all(24.0),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Text('YouTube home failed to load'),
+                          const SizedBox(height: 8),
+                          Text(
+                            YouTubeServices.lastHomeDiag,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                          const SizedBox(height: 16),
+                          ElevatedButton(
+                            onPressed: () {
+                              status = false;
+                              YouTubeServices().getMusicHome().then((value) {
+                                status = true;
+                                if (value.isNotEmpty) {
+                                  setState(() {
+                                    searchedList = value['body'] ?? [];
+                                    headList = value['head'] ?? [];
+                                  });
+                                } else {
+                                  setState(() {});
+                                }
+                              });
+                            },
+                            child: const Text('Retry'),
+                          ),
+                        ],
+                      ),
+                    ),
             )
           else
             SingleChildScrollView(
