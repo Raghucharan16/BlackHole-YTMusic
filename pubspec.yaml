@@ -29,9 +29,6 @@ dependencies:
   flutter:
     sdk: flutter
   flutter_archive: ^5.0.0
-  # Pinned to match metadata_god 0.4.1's generated bridge code (newer frb
-  # requires a parseErrorData arg its codegen doesn't pass).
-  flutter_rust_bridge: 1.77.0
   flutter_displaymode: ^0.6.0
   # flutter_downloader: ^1.7.1
   flutter_localizations:
@@ -48,7 +45,9 @@ dependencies:
   logging: ^1.2.0
   marquee: ^2.2.3
   material_design_icons_flutter: 5.0.5955-rc.1
-  metadata_god: ^0.4.1
+  # 0.5.2 targets flutter_rust_bridge ^1.82.1 (puppeteer 3.x / http 1.x),
+  # compatible with the http 1.x used by youtube_explode_dart.
+  metadata_god: ^0.5.2
   on_audio_query: ^2.9.0
   package_info_plus: ^4.0.2
   palette_generator: ^0.3.3+2
