@@ -588,52 +588,20 @@ class _YouTubeSearchPageState extends State<YouTubeSearchPage> {
                                                                 setState(() {
                                                                   done = false;
                                                                 });
-                                                                final Map
-                                                                    songItem =
-                                                                    section['items']
-                                                                        [idx] as Map;
-                                                                final Map
-                                                                    songData =
-                                                                    await YtMusicService()
-                                                                        .getSongData(
-                                                                  videoId: songItem[
-                                                                          'id']
+                                                                final Map?
+                                                                    response =
+                                                                    await YouTubeServices()
+                                                                        .formatVideoFromId(
+                                                                  id: section['items']
+                                                                              [
+                                                                              idx]
+                                                                          ['id']
                                                                       .toString(),
+                                                                  data: section[
+                                                                          'items']
+                                                                      [
+                                                                      idx] as Map,
                                                                 );
-                                                                Map? response;
-                                                                if (songData
-                                                                        .isNotEmpty &&
-                                                                    songData['url']
-                                                                        .toString()
-                                                                        .isNotEmpty) {
-                                                                  response = {
-                                                                    ...songData,
-                                                                    'title': (songItem['title'] ??
-                                                                            songData[
-                                                                                'title']),
-                                                                    'artist': (songItem['artist']?.toString().isNotEmpty ??
-                                                                            false)
-                                                                        ? songItem[
-                                                                            'artist']
-                                                                        : songData[
-                                                                            'artist'],
-                                                                    'album': (songItem['album']?.toString().isNotEmpty ??
-                                                                            false)
-                                                                        ? songItem[
-                                                                            'album']
-                                                                        : songData[
-                                                                            'album'],
-                                                                    'image': (songItem['image']?.toString().isNotEmpty ??
-                                                                            false)
-                                                                        ? songItem[
-                                                                            'image']
-                                                                        : songData[
-                                                                            'image'],
-                                                                    'subtitle':
-                                                                        songItem['subtitle'] ??
-                                                                            songData['subtitle'],
-                                                                  };
-                                                                }
                                                                 setState(() {
                                                                   done = true;
                                                                 });

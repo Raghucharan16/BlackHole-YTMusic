@@ -20,7 +20,6 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:blackhole/Services/yt_music.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:html_unescape/html_unescape_small.dart';
 import 'package:http/http.dart';
@@ -58,45 +57,43 @@ class YouTubeServices {
     }
   }
 
-  // Resolve a playable song via the InnerTube ANDROID_VR player
-  // (YtMusicService.getSongData) instead of youtube_explode, whose stream
-  // extraction no longer works on the pinned version. Any metadata already
-  // known (from a search/playlist item, passed via [data]) is preferred.
   Future<Map?> formatVideoFromId({
     required String id,
     Map? data,
     bool? getUrl,
   }) async {
-    final Map songData = await YtMusicService().getSongData(videoId: id);
-    if (songData.isEmpty || songData['url'].toString().isEmpty) {
+    final Video? vid = await getVideoFromId(id);
+    if (vid == null) {
       return null;
     }
-    if (data != null) {
-      if ((data['title']?.toString() ?? '').isNotEmpty) {
-        songData['title'] = data['title'];
-      }
-      if ((data['artist']?.toString() ?? '').isNotEmpty) {
-        songData['artist'] = data['artist'];
-      }
-      if ((data['album']?.toString() ?? '').isNotEmpty) {
-        songData['album'] = data['album'];
-      }
-      if ((data['image']?.toString() ?? '').isNotEmpty) {
-        songData['image'] = data['image'];
-      }
-      if (data['subtitle'] != null) {
-        songData['subtitle'] = data['subtitle'];
-      }
-    }
-    return songData;
+    final Map? response = await formatVideo(
+      video: vid,
+      quality: Hive.box('settings')
+          .get(
+            'ytQuality',
+            defaultValue: 'Low',
+          )
+          .toString(),
+      data: data,
+      getUrl: getUrl ?? true,
+    );
+    return response;
   }
 
   Future<Map?> refreshLink(String id) async {
-    final Map songData = await YtMusicService().getSongData(videoId: id);
-    if (songData.isEmpty || songData['url'].toString().isEmpty) {
+    final Video? res = await getVideoFromId(id);
+    if (res == null) {
       return null;
     }
-    return songData;
+    String quality;
+    try {
+      quality =
+          Hive.box('settings').get('quality', defaultValue: 'Low').toString();
+    } catch (e) {
+      quality = 'Low';
+    }
+    final Map? data = await formatVideo(video: res, quality: quality);
+    return data;
   }
 
   Future<Playlist> getPlaylistDetails(String id) async {
