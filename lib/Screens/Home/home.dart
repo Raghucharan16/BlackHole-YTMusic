@@ -52,7 +52,10 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  final ValueNotifier<int> _selectedIndex = ValueNotifier<int>(0);
+  // Land on the YouTube (Music) tab by default: the JioSaavn home can be
+  // blocked (HTTP 403) on some networks, whereas YouTube Music is the
+  // primary source for this build.
+  final ValueNotifier<int> _selectedIndex = ValueNotifier<int>(1);
   bool checked = false;
   String? appVersion;
   String name =
@@ -225,7 +228,7 @@ class _HomePageState extends State<HomePage> {
   }
 
   final ScrollController _scrollController = ScrollController();
-  final PageController _pageController = PageController();
+  final PageController _pageController = PageController(initialPage: 1);
 
   @override
   void initState() {

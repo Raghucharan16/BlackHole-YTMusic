@@ -21,6 +21,7 @@ import 'package:blackhole/CustomWidgets/on_hover.dart';
 import 'package:blackhole/Screens/YouTube/youtube_playlist.dart';
 import 'package:blackhole/Screens/YouTube/youtube_search.dart';
 import 'package:blackhole/Services/youtube_services.dart';
+import 'package:blackhole/Services/yt_music.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:carousel_slider/carousel_slider.dart';
 import 'package:flutter/material.dart';
@@ -59,7 +60,7 @@ class _YouTubeState extends State<YouTube>
   @override
   void initState() {
     if (!status) {
-      YouTubeServices().getMusicHome().then((value) {
+      YtMusicService().getMusicHome().then((value) {
         status = true;
         if (value.isNotEmpty) {
           setState(() {
@@ -115,7 +116,7 @@ class _YouTubeState extends State<YouTube>
         children: [
           if (searchedList.isEmpty)
             Center(
-              child: YouTubeServices.lastHomeDiag.isEmpty
+              child: YtMusicService.lastHomeDiag.isEmpty
                   ? const CircularProgressIndicator()
                   : Padding(
                       padding: const EdgeInsets.all(24.0),
@@ -125,7 +126,7 @@ class _YouTubeState extends State<YouTube>
                           const Text('YouTube home failed to load'),
                           const SizedBox(height: 8),
                           Text(
-                            YouTubeServices.lastHomeDiag,
+                            YtMusicService.lastHomeDiag,
                             textAlign: TextAlign.center,
                             style: const TextStyle(fontSize: 12),
                           ),
@@ -133,7 +134,7 @@ class _YouTubeState extends State<YouTube>
                           ElevatedButton(
                             onPressed: () {
                               status = false;
-                              YouTubeServices().getMusicHome().then((value) {
+                              YtMusicService().getMusicHome().then((value) {
                                 status = true;
                                 if (value.isNotEmpty) {
                                   setState(() {
@@ -269,6 +270,10 @@ class _YouTubeState extends State<YouTube>
                                                   YouTubePlaylist(
                                                 playlistId: item['playlistId']
                                                     .toString(),
+                                                type: (item['type'] == 'album' ||
+                                                        item['type'] == 'artist')
+                                                    ? item['type'].toString()
+                                                    : 'playlist',
                                                 // playlistImage:
                                                 //     item['imageStandard']
                                                 //         .toString(),
