@@ -69,9 +69,9 @@ packages:
     dependency: "direct main"
     description:
       path: "."
-      ref: "90f2db5"
-      resolved-ref: "90f2db54680c25d11e279466044ba13fd701bad7"
-      url: "https://github.com/Sangwan5688/Audiotagger"
+      ref: c3f508aa92b1574385cb5a3d360b6a056676f63b
+      resolved-ref: c3f508aa92b1574385cb5a3d360b6a056676f63b
+      url: "https://github.com/Raghucharan16/Audiotagger"
     source: git
     version: "2.2.1"
   boolean_selector:

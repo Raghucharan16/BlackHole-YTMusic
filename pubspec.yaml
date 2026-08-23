@@ -15,8 +15,8 @@ dependencies:
   audio_service: ^0.18.10
   audiotagger:
     git:
-      url: https://github.com/Sangwan5688/Audiotagger
-      ref: 90f2db5
+      url: https://github.com/Raghucharan16/Audiotagger
+      ref: c3f508aa92b1574385cb5a3d360b6a056676f63b
   # bitsdojo_window: ^0.1.1+1 #For Desktops
   cached_network_image: ^3.2.3
   carousel_slider: ^4.2.1
