@@ -613,91 +613,131 @@ class YtMusicService {
     return days;
   }
 
-  // Public entry point:
-  //   1. Fetch metadata from InnerTube (title/artist/image — fast)
-  //   2. ALWAYS resolve stream URL via youtube_explode_dart (handles n-param cipher)
-  //   Merging the two gives reliable playback + accurate metadata.
+  // Resolves a playable stream URL + metadata for a YouTube videoId.
+  //
+  // Fast path: ytlinkcache hit → instant.
+  // Main path: youtube_explode_dart getManifest (20 s timeout) — handles
+  //   YouTube's n-param cipher decoding which raw InnerTube URLs skip.
+  //   The static YoutubeExplode singleton in YouTubeServices caches the
+  //   player JS so only the FIRST call on a session is slow (~500 KB fetch).
+  // Fallback: InnerTube URL from ANDROID_VR/ANDROID/iOS client (may 403 on
+  //   some content, but better than returning empty).
   Future<Map> getSongData({required String videoId}) async {
-    // Metadata pass (InnerTube — non-blocking if it fails)
-    final Map metadata = await _getSongDataVR(videoId: videoId);
-
-    // Stream URL pass — youtube_explode_dart decodes YouTube's n-param
+    // 1. Cache fast-path
     try {
-      final yt = YoutubeExplode();
-      try {
-        final manifest = await yt
-            .videos.streamsClient
-            .getManifest(VideoId(videoId));
-        final List<AudioOnlyStreamInfo> sorted =
-            manifest.audioOnly.sortByBitrate();
-        if (sorted.isEmpty) {
-          yt.close();
-          return metadata; // no streams from explode, use InnerTube URL as-is
+      if (Hive.box('ytlinkcache').containsKey(videoId)) {
+        final Map cached =
+            Hive.box('ytlinkcache').get(videoId) as Map;
+        final int cachedExpireAt =
+            int.parse(cached['expire_at'].toString());
+        if ((DateTime.now().millisecondsSinceEpoch ~/ 1000) + 350 <
+            cachedExpireAt) {
+          // Still fresh — return cache URL merged with any InnerTube metadata.
+          final Map meta = await _getSongDataVR(videoId: videoId);
+          final Map base = meta.isNotEmpty
+              ? meta
+              : {
+                  'id': videoId,
+                  'title': '',
+                  'artist': '',
+                  'album': '',
+                  'duration': '',
+                  'image': 'https://i.ytimg.com/vi/$videoId/hqdefault.jpg',
+                  'images': <String>[],
+                  'language': 'YouTube',
+                  'genre': 'YouTube',
+                  'year': '',
+                  '320kbps': 'false',
+                  'has_lyrics': 'false',
+                  'release_date': '',
+                  'album_id': '',
+                  'subtitle': '',
+                  'perma_url': 'https://youtube.com/watch?v=$videoId',
+                };
+          return {
+            ...base,
+            'url': cached['url'],
+            'lowUrl': cached['lowUrl'] ?? cached['url'],
+            'highUrl': cached['highUrl'] ?? cached['url'],
+            'expire_at': cached['expire_at'],
+          };
         }
-        // On Android, m4a (mp4a) is more reliably decoded by ExoPlayer.
-        final List<AudioOnlyStreamInfo> m4a = sorted
-            .where((s) => s.audioCodec.contains('mp4'))
-            .toList();
-        final List<AudioOnlyStreamInfo> chosen =
-            m4a.isNotEmpty ? m4a : sorted;
-        final String lowUrl = chosen.first.url.toString();
-        final String highUrl = chosen.last.url.toString();
-        final String ytQuality = Hive.box('settings')
-            .get('ytQuality', defaultValue: 'Low')
-            .toString();
-        final String finalUrl = ytQuality == 'High' ? highUrl : lowUrl;
-        final String expireAt =
-            RegExp('expire=(.*?)&').firstMatch(finalUrl)?.group(1) ??
-                ((DateTime.now().millisecondsSinceEpoch ~/ 1000) + 3600 * 5)
-                    .toString();
-        yt.close();
-        try {
-          await Hive.box('ytlinkcache').put(videoId, {
-            'url': finalUrl,
-            'expire_at': expireAt,
-            'lowUrl': lowUrl,
-            'highUrl': highUrl,
-          });
-        } catch (_) {}
-        // Use InnerTube metadata if we got it, otherwise minimal map.
-        final Map base = metadata.isNotEmpty
-            ? metadata
-            : {
-                'id': videoId,
-                'title': '',
-                'artist': '',
-                'album': '',
-                'duration': '',
-                'image': '',
-                'images': <String>[],
-                'language': 'YouTube',
-                'genre': 'YouTube',
-                'year': '',
-                '320kbps': 'false',
-                'has_lyrics': 'false',
-                'release_date': '',
-                'album_id': '',
-                'subtitle': '',
-                'perma_url': 'https://youtube.com/watch?v=$videoId',
-              };
-        return {
-          ...base,
+      }
+    } catch (_) {}
+
+    // 2. Get InnerTube metadata in parallel with stream URL resolution.
+    //    (metadata is fast; stream URL may be slow first call)
+    final Future<Map> metaFuture = _getSongDataVR(videoId: videoId);
+
+    // 3. Stream URL via youtube_explode_dart (singleton yt instance,
+    //    cached player JS after first call).
+    try {
+      final manifest = await YouTubeServices.yt.videos.streamsClient
+          .getManifest(VideoId(videoId))
+          .timeout(const Duration(seconds: 20));
+
+      final List<AudioOnlyStreamInfo> sorted =
+          manifest.audioOnly.sortByBitrate();
+      if (sorted.isEmpty) throw Exception('no audio streams in manifest');
+
+      final List<AudioOnlyStreamInfo> m4a =
+          sorted.where((s) => s.audioCodec.contains('mp4')).toList();
+      final List<AudioOnlyStreamInfo> chosen =
+          m4a.isNotEmpty ? m4a : sorted;
+
+      final String lowUrl = chosen.first.url.toString();
+      final String highUrl = chosen.last.url.toString();
+      final String ytQuality =
+          Hive.box('settings').get('ytQuality', defaultValue: 'Low').toString();
+      final String finalUrl = ytQuality == 'High' ? highUrl : lowUrl;
+      final String expireAt =
+          RegExp(r'expire=(\d+)').firstMatch(finalUrl)?.group(1) ??
+              ((DateTime.now().millisecondsSinceEpoch ~/ 1000) + 3600 * 5)
+                  .toString();
+
+      try {
+        await Hive.box('ytlinkcache').put(videoId, {
           'url': finalUrl,
+          'expire_at': expireAt,
           'lowUrl': lowUrl,
           'highUrl': highUrl,
-          'expire_at': expireAt,
-        };
-      } catch (e) {
-        yt.close();
-        rethrow;
-      }
+        });
+      } catch (_) {}
+
+      final Map meta = await metaFuture;
+      final Map base = meta.isNotEmpty
+          ? meta
+          : {
+              'id': videoId,
+              'title': '',
+              'artist': '',
+              'album': '',
+              'duration': '',
+              'image': 'https://i.ytimg.com/vi/$videoId/hqdefault.jpg',
+              'images': <String>[],
+              'language': 'YouTube',
+              'genre': 'YouTube',
+              'year': '',
+              '320kbps': 'false',
+              'has_lyrics': 'false',
+              'release_date': '',
+              'album_id': '',
+              'subtitle': '',
+              'perma_url': 'https://youtube.com/watch?v=$videoId',
+            };
+      return {
+        ...base,
+        'url': finalUrl,
+        'lowUrl': lowUrl,
+        'highUrl': highUrl,
+        'expire_at': expireAt,
+      };
     } catch (e) {
-      Logger.root.severe('getSongData explode url failed for $videoId: $e');
-      // Last resort: InnerTube URL (may 403 on some content)
-      if (metadata.isNotEmpty) return metadata;
-      final Map? fallback =
-          await YouTubeServices().formatVideoFromId(id: videoId);
-      return fallback ?? {};
+      Logger.root.severe('getSongData manifest failed for $videoId: $e');
+      // Fallback: InnerTube URL (may need n-param decoding but worth trying)
+      final Map meta = await metaFuture;
+      if (meta.isNotEmpty) return meta;
+      return {};
     }
   }
 

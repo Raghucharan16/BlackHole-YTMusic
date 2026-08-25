@@ -186,50 +186,54 @@ class PlayerInvoke {
     updateNplay(queue, index);
   }
 
+  // Refreshes the stream URL for a YouTube song MAP in-place.
+  // Has a 15-second timeout and full try-catch — a hang or network error
+  // must NEVER propagate up and kill setValues silently.
   static Future<void> refreshYtLink(Map playItem) async {
-    // final bool cacheSong =
-    // Hive.box('settings').get('cacheSong', defaultValue: true) as bool;
-    final int expiredAt = int.parse((playItem['expire_at'] ?? '0').toString());
-    if ((DateTime.now().millisecondsSinceEpoch ~/ 1000) + 350 > expiredAt) {
-      Logger.root.info(
-        'before service | youtube link expired for ${playItem["title"]}',
-      );
-      if (Hive.box('ytlinkcache').containsKey(playItem['id'])) {
-        final Map cache =
-            await Hive.box('ytlinkcache').get(playItem['id']) as Map;
-        final int expiredAt = int.parse((cache['expire_at'] ?? '0').toString());
-        // final String wasCacheEnabled = cache['cached'].toString();
-        if ((DateTime.now().millisecondsSinceEpoch ~/ 1000) + 350 > expiredAt) {
-          Logger.root
-              .info('youtube link expired in cache for ${playItem["title"]}');
-          final newData =
-              await YouTubeServices().refreshLink(playItem['id'].toString());
-          Logger.root.info(
-            'before service | received new link for ${playItem["title"]}',
-          );
-          if (newData != null) {
-            playItem['url'] = newData['url'];
-            playItem['duration'] = newData['duration'];
-            playItem['expire_at'] = newData['expire_at'];
-          }
-        } else {
-          Logger.root
-              .info('youtube link found in cache for ${playItem["title"]}');
-          playItem['url'] = cache['url'];
-          playItem['expire_at'] = cache['expire_at'];
-        }
-      } else {
-        final newData =
-            await YouTubeServices().refreshLink(playItem['id'].toString());
+    try {
+      final int expiredAt =
+          int.parse((playItem['expire_at'] ?? '0').toString());
+      if ((DateTime.now().millisecondsSinceEpoch ~/ 1000) + 350 > expiredAt) {
         Logger.root.info(
-          'before service | received new link for ${playItem["title"]}',
+          'before service | youtube link expired for ${playItem["title"]}',
         );
+        // Check cache first before making a network call.
+        if (Hive.box('ytlinkcache').containsKey(playItem['id'])) {
+          final Map cache =
+              Hive.box('ytlinkcache').get(playItem['id']) as Map;
+          final int cachedExpireAt =
+              int.parse((cache['expire_at'] ?? '0').toString());
+          if ((DateTime.now().millisecondsSinceEpoch ~/ 1000) + 350 <
+              cachedExpireAt) {
+            Logger.root.info(
+              'youtube link found in cache for ${playItem["title"]}',
+            );
+            playItem['url'] = cache['url'];
+            playItem['expire_at'] = cache['expire_at'];
+            return;
+          }
+        }
+        // Cache also expired — fetch fresh via youtube_explode_dart.
+        Logger.root.info(
+          'youtube link expired in cache for ${playItem["title"]}, fetching',
+        );
+        final newData = await YouTubeServices()
+            .refreshLink(playItem['id'].toString())
+            .timeout(const Duration(seconds: 15));
         if (newData != null) {
           playItem['url'] = newData['url'];
           playItem['duration'] = newData['duration'];
           playItem['expire_at'] = newData['expire_at'];
+          Logger.root.info(
+            'before service | received new link for ${playItem["title"]}',
+          );
         }
       }
+    } catch (e) {
+      // Never let a timeout or network error kill setValues.
+      Logger.root.warning(
+        'refreshYtLink failed for ${playItem["id"]}: $e — using available URL',
+      );
     }
   }
 
@@ -239,27 +243,31 @@ class PlayerInvoke {
     bool recommend = true,
     // String? playlistBox,
   }) async {
-    final List<MediaItem> queue = [];
-    final Map playItem = response[index] as Map;
-    final Map? nextItem =
-        index == response.length - 1 ? null : response[index + 1] as Map;
-    if (playItem['genre'] == 'YouTube') {
-      await refreshYtLink(playItem);
-    }
-    if (nextItem != null && nextItem['genre'] == 'YouTube') {
-      await refreshYtLink(nextItem);
-    }
+    try {
+      final List<MediaItem> queue = [];
+      final Map playItem = response[index] as Map;
+      final Map? nextItem =
+          index == response.length - 1 ? null : response[index + 1] as Map;
+      if (playItem['genre'] == 'YouTube') {
+        await refreshYtLink(playItem);
+      }
+      if (nextItem != null && nextItem['genre'] == 'YouTube') {
+        await refreshYtLink(nextItem);
+      }
 
-    queue.addAll(
-      response.map(
-        (song) => MediaItemConverter.mapToMediaItem(
-          song as Map,
-          autoplay: recommend,
-          // playlistBox: playlistBox,
+      queue.addAll(
+        response.map(
+          (song) => MediaItemConverter.mapToMediaItem(
+            song as Map,
+            autoplay: recommend,
+            // playlistBox: playlistBox,
+          ),
         ),
-      ),
-    );
-    await updateNplay(queue, index);
+      );
+      await updateNplay(queue, index);
+    } catch (e) {
+      Logger.root.severe('setValues error — audio may not start: $e');
+    }
   }
 
   static Future<void> updateNplay(List<MediaItem> queue, int index) async {

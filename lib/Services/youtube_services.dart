@@ -40,7 +40,10 @@ class YouTubeServices {
     'User-Agent':
         'Mozilla/5.0 (Windows NT 10.0; rv:96.0) Gecko/20100101 Firefox/96.0'
   };
-  final YoutubeExplode yt = YoutubeExplode();
+  // Static singleton so the player-JS cache is shared across all calls.
+  // Re-creating YoutubeExplode() each call discards the cached player page
+  // and forces a fresh ~500 KB download every tap on slow mobile networks.
+  static final YoutubeExplode yt = YoutubeExplode();
 
   Future<List<Video>> getPlaylistSongs(String id) async {
     final List<Video> results = await yt.playlists.getVideos(id).toList();
@@ -49,10 +52,12 @@ class YouTubeServices {
 
   Future<Video?> getVideoFromId(String id) async {
     try {
-      final Video result = await yt.videos.get(id);
+      final Video result = await yt.videos
+          .get(id)
+          .timeout(const Duration(seconds: 20));
       return result;
     } catch (e) {
-      Logger.root.severe('Error while getting video from id', e);
+      Logger.root.severe('Error while getting video from id: $e');
       return null;
     }
   }
@@ -552,8 +557,9 @@ class YouTubeServices {
     Video video,
     // {bool preferM4a = true}
   ) async {
-    final StreamManifest manifest =
-        await yt.videos.streamsClient.getManifest(video.id);
+    final StreamManifest manifest = await yt.videos.streamsClient
+        .getManifest(video.id)
+        .timeout(const Duration(seconds: 20));
     final List<AudioOnlyStreamInfo> sortedStreamInfo =
         manifest.audioOnly.sortByBitrate();
     if (Platform.isIOS || Platform.isMacOS) {
