@@ -788,43 +788,43 @@ class YtMusicService {
       body['browseId'] = browseId;
       final Map response =
           await sendRequest(endpoints['browse']!, body, headers);
-      final String? heading = nav(response, [
-        'header',
-        'musicDetailHeaderRenderer',
-        'title',
-        'runs',
-        0,
-        'text'
-      ]) as String?;
-      final String subtitle = (nav(response, [
-                'header',
-                'musicDetailHeaderRenderer',
-                'subtitle',
-                'runs',
-              ]) as List? ??
-              [])
-          .map((e) => e['text'])
-          .toList()
-          .join();
-      final String? description = nav(response, [
-        'header',
-        'musicDetailHeaderRenderer',
-        'description',
-        'runs',
-        0,
-        'text'
-      ]) as String?;
-      final List images = (nav(response, [
-        'header',
-        'musicDetailHeaderRenderer',
-        'thumbnail',
-        'croppedSquareThumbnailRenderer',
-        'thumbnail',
-        'thumbnails'
-      ]) as List)
-          .map((e) => e['url'])
-          .toList();
-      final List finalResults = nav(response, [
+
+      // Header — YTM uses different renderer types across playlist kinds.
+      dynamic _h(List path) {
+        for (final hKey in [
+          'musicDetailHeaderRenderer',
+          'musicEditablePlaylistDetailHeaderRenderer',
+          'musicImmersiveHeaderRenderer',
+        ]) {
+          final v = nav(response, ['header', hKey, ...path]);
+          if (v != null) return v;
+        }
+        return null;
+      }
+
+      final String? heading =
+          _h(['title', 'runs', 0, 'text']) as String?;
+      final String subtitle =
+          (_h(['subtitle', 'runs']) as List? ?? [])
+              .map((e) => e['text'])
+              .join();
+      final String? description =
+          _h(['description', 'runs', 0, 'text']) as String?;
+      // Try croppedSquare first (older), fall back to musicThumbnailRenderer.
+      final List rawThumbs = (_h([
+                'thumbnail',
+                'croppedSquareThumbnailRenderer',
+                'thumbnail',
+                'thumbnails'
+              ]) ??
+              _h(['thumbnail', 'musicThumbnailRenderer', 'thumbnail',
+                  'thumbnails']) ??
+              []) as List? ??
+          [];
+      final List images = rawThumbs.map((e) => e['url']).toList();
+
+      // Content — try singleColumn then twoColumn layout.
+      List finalResults = nav(response, [
             'contents',
             'singleColumnBrowseResultsRenderer',
             'tabs',
@@ -837,90 +837,106 @@ class YtMusicService {
             'musicPlaylistShelfRenderer',
             'contents'
           ]) as List? ??
+          nav(response, [
+            'contents',
+            'twoColumnBrowseResultsRenderer',
+            'secondaryContents',
+            'sectionListRenderer',
+            'contents',
+            0,
+            'musicShelfRenderer',
+            'contents'
+          ]) as List? ??
           [];
+
       final List<Map> songResults = [];
       for (final item in finalResults) {
-        final String id = nav(item, [
-          'musicResponsiveListItemRenderer',
-          'playlistItemData',
-          'videoId'
-        ]).toString();
-        final String image = nav(item, [
-          'musicResponsiveListItemRenderer',
-          'thumbnail',
-          'musicThumbnailRenderer',
-          'thumbnail',
-          'thumbnails',
-          0,
-          'url'
-        ]).toString();
-        final String title = nav(item, [
-          'musicResponsiveListItemRenderer',
-          'flexColumns',
-          0,
-          'musicResponsiveListItemFlexColumnRenderer',
-          'text',
-          'runs',
-          0,
-          'text'
-        ]).toString();
-        final List subtitleList = nav(item, [
-          'musicResponsiveListItemRenderer',
-          'flexColumns',
-          1,
-          'musicResponsiveListItemFlexColumnRenderer',
-          'text',
-          'runs'
-        ]) as List;
-        int count = 0;
-        String year = '';
-        String album = '';
-        String artist = '';
-        String albumArtist = '';
-        String duration = '';
-        String subtitle = '';
-        year = '';
-        for (final element in subtitleList) {
-          // ignore: use_string_buffers
-          subtitle += element['text'].toString();
-          if (element['text'].trim() == '•') {
-            count++;
-          } else {
-            if (count == 0) {
-              if (element['text'].toString().trim() == '&') {
-                artist += ', ';
-              } else {
-                artist += element['text'].toString();
-                if (albumArtist == '') {
-                  albumArtist = element['text'].toString();
+        try {
+          final String id = nav(item, [
+                'musicResponsiveListItemRenderer',
+                'playlistItemData',
+                'videoId'
+              ])?.toString() ??
+              '';
+          if (id.isEmpty || id == 'null') continue;
+          final String image = nav(item, [
+                'musicResponsiveListItemRenderer',
+                'thumbnail',
+                'musicThumbnailRenderer',
+                'thumbnail',
+                'thumbnails',
+                0,
+                'url'
+              ])?.toString() ??
+              '';
+          final String title = nav(item, [
+                'musicResponsiveListItemRenderer',
+                'flexColumns',
+                0,
+                'musicResponsiveListItemFlexColumnRenderer',
+                'text',
+                'runs',
+                0,
+                'text'
+              ])?.toString() ??
+              '';
+          final List subtitleList = nav(item, [
+                'musicResponsiveListItemRenderer',
+                'flexColumns',
+                1,
+                'musicResponsiveListItemFlexColumnRenderer',
+                'text',
+                'runs'
+              ]) as List? ??
+              [];
+          int count = 0;
+          String year = '';
+          String album = '';
+          String artist = '';
+          String albumArtist = '';
+          String duration = '';
+          String subtitle = '';
+          for (final element in subtitleList) {
+            subtitle += element['text'].toString();
+            if (element['text'].trim() == '•') {
+              count++;
+            } else {
+              if (count == 0) {
+                if (element['text'].toString().trim() == '&') {
+                  artist += ', ';
+                } else {
+                  artist += element['text'].toString();
+                  if (albumArtist.isEmpty) albumArtist = artist;
                 }
+              } else if (count == 1) {
+                album += element['text'].toString();
+              } else if (count == 2) {
+                duration += element['text'].toString();
               }
-            } else if (count == 1) {
-              album += element['text'].toString();
-            } else if (count == 2) {
-              duration += element['text'].toString();
             }
           }
+          songResults.add({
+            'id': id,
+            'type': 'song',
+            'title': title,
+            'artist': artist,
+            'genre': 'YouTube',
+            'language': 'YouTube',
+            'year': year,
+            'album_artist': albumArtist,
+            'album': album,
+            'duration': duration,
+            'subtitle': subtitle,
+            'image': image,
+            'perma_url': 'https://www.youtube.com/watch?v=$id',
+            'url': 'https://www.youtube.com/watch?v=$id',
+            'release_date': '',
+            'album_id': '',
+            'expire_at': '0',
+          });
+        } catch (e) {
+          Logger.root.warning('getPlaylistDetails: skipping malformed item', e);
         }
-        songResults.add({
-          'id': id,
-          'type': 'song',
-          'title': title,
-          'artist': artist,
-          'genre': 'YouTube',
-          'language': 'YouTube',
-          'year': year,
-          'album_artist': albumArtist,
-          'album': album,
-          'duration': duration,
-          'subtitle': subtitle,
-          'image': image,
-          'perma_url': 'https://www.youtube.com/watch?v=$id',
-          'url': 'https://www.youtube.com/watch?v=$id',
-          'release_date': '',
-          'album_id': '',
-          'expire_at': '0',
-        });
       }
       return {
         'songs': songResults,

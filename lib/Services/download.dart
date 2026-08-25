@@ -24,6 +24,7 @@ import 'package:audiotagger/models/tag.dart';
 import 'package:blackhole/CustomWidgets/snackbar.dart';
 import 'package:blackhole/Helpers/lyrics.dart';
 import 'package:blackhole/Services/ext_storage_provider.dart';
+import 'package:blackhole/Services/yt_music.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 // import 'package:flutter_downloader/flutter_downloader.dart';
@@ -368,11 +369,26 @@ class Download with ChangeNotifier {
           .create(recursive: true)
           .then((value) => filepath2 = value.path);
     }
+    // For YouTube songs fetched from a playlist/album (not yet played), the
+    // url is still the watch-page URL. Resolve to a real audio stream first.
+    if ((data['genre']?.toString() == 'YouTube' ||
+            data['language']?.toString() == 'YouTube') &&
+        data['url'].toString().contains('youtube.com/watch')) {
+      Logger.root.info(
+          'Resolving YT stream URL for download: ${data["id"]}');
+      final Map streamData =
+          await YtMusicService().getSongData(videoId: data['id'].toString());
+      if (streamData.isNotEmpty) {
+        data['url'] = streamData['url'];
+        data['lowUrl'] = streamData['lowUrl'];
+        data['highUrl'] = streamData['highUrl'];
+      }
+    }
+
     String kUrl = data['url'].toString();
 
-    if (data['url'].toString().contains('google')) {
+    if (kUrl.contains('google')) {
       Logger.root.info('Fetching youtube download url with preferred quality');
-      // filename = filename.replaceAll('.m4a', '.opus');
 
       kUrl = preferredYtDownloadQuality == 'High'
           ? data['highUrl'].toString()
