@@ -348,16 +348,10 @@ class AudioPlayerHandlerImpl extends BaseAudioHandler
       addQueueItem(newItem);
       return;
     }
-    late AudioSource audioSource;
-    if (cacheSong) {
-      audioSource = LockCachingAudioSource(
-        Uri.parse(newItem.extras!['url'].toString()),
-      );
-    } else {
-      audioSource = AudioSource.uri(
-        Uri.parse(newItem.extras!['url'].toString()),
-      );
-    }
+    // refreshLink is called for YouTube songs — never cache their signed URLs.
+    final AudioSource audioSource = AudioSource.uri(
+      Uri.parse(newItem.extras!['url'].toString()),
+    );
     _mediaItemExpando[audioSource] = newItem;
     await _playlist.removeAt(index);
     await _playlist.insert(index, audioSource);
@@ -403,14 +397,10 @@ class AudioPlayerHandlerImpl extends BaseAudioHandler
                 Logger.root.info(
                   'youtube link found in cache for ${mediaItem.title}',
                 );
-                if (cacheSong) {
-                  audioSource = LockCachingAudioSource(
-                    Uri.parse(cachedData['url'].toString()),
-                  );
-                } else {
-                  audioSource =
-                      AudioSource.uri(Uri.parse(cachedData['url'].toString()));
-                }
+                // YouTube URLs are signed and expire — never use
+                // LockCachingAudioSource (its local proxy breaks signed URLs).
+                audioSource =
+                    AudioSource.uri(Uri.parse(cachedData['url'].toString()));
                 mediaItem.extras!['url'] = cachedData['url'];
                 _mediaItemExpando[audioSource] = mediaItem;
                 return audioSource;
@@ -425,15 +415,10 @@ class AudioPlayerHandlerImpl extends BaseAudioHandler
               }
             }
           } else {
-            if (cacheSong) {
-              audioSource = LockCachingAudioSource(
-                Uri.parse(mediaItem.extras!['url'].toString()),
-              );
-            } else {
-              audioSource = AudioSource.uri(
-                Uri.parse(mediaItem.extras!['url'].toString()),
-              );
-            }
+            // Valid URL — stream directly; never cache YouTube signed URLs.
+            audioSource = AudioSource.uri(
+              Uri.parse(mediaItem.extras!['url'].toString()),
+            );
             _mediaItemExpando[audioSource] = mediaItem;
             return audioSource;
           }
