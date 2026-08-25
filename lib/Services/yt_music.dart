@@ -630,10 +630,22 @@ class YtMusicService {
     }
   }
 
-  // Tries ANDROID then IOS InnerTube clients (Bloom's priority order).
-  // Both return direct stream URLs — no cipher, no PoToken needed.
+  // Client priority order based on OuterTune + Metrolist + Bloom research:
+  //   1. ANDROID_VR — OuterTune's "only currently working client" (direct URLs, no cipher)
+  //   2. ANDROID   — Bloom primary (direct URLs; may need cipher on some content)
+  //   3. IOS       — Bloom secondary (direct URLs)
+  // youtube_explode_dart handles cipher for anything that falls through.
   Future<Map> _getSongDataVR({required String videoId}) async {
     Map result = await _playerRequest(
+      videoId: videoId,
+      clientName: 'ANDROID_VR',
+      clientVersion: '1.56.21',
+      clientNumericId: '28',
+      userAgent:
+          'com.google.android.apps.youtube.vr.oculus/1.56.21 (Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1) gzip',
+    );
+    if (result.isNotEmpty) return result;
+    result = await _playerRequest(
       videoId: videoId,
       clientName: 'ANDROID',
       clientVersion: '21.26.364',
@@ -795,6 +807,7 @@ class YtMusicService {
           'musicDetailHeaderRenderer',
           'musicEditablePlaylistDetailHeaderRenderer',
           'musicImmersiveHeaderRenderer',
+          'musicResponsiveHeaderRenderer', // standard albums (OuterTune/Metrolist)
         ]) {
           final v = nav(response, ['header', hKey, ...path]);
           if (v != null) return v;
@@ -962,16 +975,30 @@ class YtMusicService {
       body['browseId'] = albumId;
       final Map response =
           await sendRequest(endpoints['browse']!, body, headers);
-      final String? heading =
-          nav(response, [...headerDetail, ...titleText]) as String?;
+      // Try multiple header renderer types (standard albums use musicResponsiveHeaderRenderer).
+      dynamic ah(List path) {
+        for (final hKey in [
+          'musicDetailHeaderRenderer',
+          'musicImmersiveHeaderRenderer',
+          'musicResponsiveHeaderRenderer',
+        ]) {
+          final v = nav(response, ['header', hKey, ...path]);
+          if (v != null) return v;
+        }
+        return null;
+      }
+
+      final String? heading = ah([...titleText]) as String?;
       final String subtitle = joinRunTexts(
-        nav(response, [...headerDetail, ...subtitleRuns]) as List? ?? [],
+        ah([...subtitleRuns]) as List? ?? [],
       );
       final String description = joinRunTexts(
-        nav(response, [...headerDetail, ...secondSubtitleRuns]) as List? ?? [],
+        ah([...secondSubtitleRuns]) as List? ?? [],
       );
       final List images = runUrls(
-        nav(response, [...headerDetail, ...thumbnailCropped]) as List? ?? [],
+        (ah([...thumbnailCropped]) ??
+                ah(['thumbnail', 'musicThumbnailRenderer', ...thumbnail])) as List? ??
+            [],
       );
       final List finalResults = nav(response, [
             ...singleColumnTab,
