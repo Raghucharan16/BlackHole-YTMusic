@@ -26,8 +26,7 @@ import 'package:blackhole/Services/ytmusic/playlist.dart';
 import 'package:hive/hive.dart';
 import 'package:http/http.dart';
 import 'package:logging/logging.dart';
-import 'package:youtube_explode_dart/youtube_explode_dart.dart'
-    show YoutubeExplode, VideoId, AudioOnlyStreamInfo;
+import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 
 class YtMusicService {
   static const ytmDomain = 'music.youtube.com';
