@@ -630,27 +630,53 @@ class YtMusicService {
     }
   }
 
-  // Resolves a playable song via the InnerTube player using the ANDROID_VR
-  // client. That client returns direct (un-ciphered, PoToken-free) stream
-  // URLs, so no signature deciphering or youtube_explode is required.
+  // Tries ANDROID then IOS InnerTube clients (Bloom's priority order).
+  // Both return direct stream URLs — no cipher, no PoToken needed.
   Future<Map> _getSongDataVR({required String videoId}) async {
-    const String vrUserAgent =
-        'com.google.android.apps.youtube.vr.oculus/1.56.21 '
-        '(Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1) gzip';
+    Map result = await _playerRequest(
+      videoId: videoId,
+      clientName: 'ANDROID',
+      clientVersion: '21.26.364',
+      clientNumericId: '3',
+      userAgent:
+          'com.google.android.youtube/21.26.364 (Linux; U; Android 11) gzip',
+    );
+    if (result.isNotEmpty) return result;
+    return _playerRequest(
+      videoId: videoId,
+      clientName: 'IOS',
+      clientVersion: '20.10.4',
+      clientNumericId: '5',
+      userAgent:
+          'com.google.ios.youtube/20.10.4 (iPhone16,2; U; CPU iOS 18_3_2 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148 gzip',
+    );
+  }
+
+  // Shared InnerTube /player request. Returns a song map on success, {} on
+  // any failure (non-200, no direct URLs, exception).
+  Future<Map> _playerRequest({
+    required String videoId,
+    required String clientName,
+    required String clientVersion,
+    required String clientNumericId,
+    required String userAgent,
+  }) async {
     try {
-      final Uri uri =
-          Uri.https('youtubei.googleapis.com', '/youtubei/v1/player');
+      if (headers == null) await init();
+      final String visitorData = headers!['X-Goog-Visitor-Id'] ?? '';
+      final Uri uri = Uri.https(
+        'www.youtube.com',
+        '/youtubei/v1/player',
+        {'prettyPrint': 'false'},
+      );
       final Map<String, dynamic> body = {
         'context': {
           'client': {
-            'clientName': 'ANDROID_VR',
-            'clientVersion': '1.56.21',
-            'deviceMake': 'Oculus',
-            'deviceModel': 'Quest 3',
-            'androidSdkVersion': 32,
+            'clientName': clientName,
+            'clientVersion': clientVersion,
             'hl': 'en',
             'gl': 'US',
-            'userAgent': vrUserAgent,
+            if (visitorData.isNotEmpty) 'visitorData': visitorData,
           },
         },
         'videoId': videoId,
@@ -661,14 +687,16 @@ class YtMusicService {
         uri,
         headers: {
           'content-type': 'application/json',
-          'user-agent': vrUserAgent,
-          'X-Goog-Api-Format-Version': '2',
+          'user-agent': userAgent,
+          'X-YouTube-Client-Name': clientNumericId,
+          'X-YouTube-Client-Version': clientVersion,
+          if (visitorData.isNotEmpty) 'X-Goog-Visitor-Id': visitorData,
         },
         body: jsonEncode(body),
       );
       if (response.statusCode != 200) {
-        Logger.root
-            .severe('getSongData player returned ${response.statusCode}');
+        Logger.root.severe(
+            '_playerRequest $clientName returned ${response.statusCode}');
         return {};
       }
       final Map data = json.decode(response.body) as Map;
@@ -687,8 +715,8 @@ class YtMusicService {
           )
           .toList();
       if (audioFormats.isEmpty) {
-        Logger.root
-            .severe('getSongData: no direct audio url (status: $playability)');
+        Logger.root.severe(
+            '_playerRequest $clientName: no direct url (status: $playability)');
         return {};
       }
       audioFormats.sort(
@@ -744,7 +772,7 @@ class YtMusicService {
         'views': videoDetails['viewCount'],
       };
     } catch (e) {
-      Logger.root.severe('Error in yt get song data', e);
+      Logger.root.severe('_playerRequest $clientName error for $videoId', e);
       return {};
     }
   }
