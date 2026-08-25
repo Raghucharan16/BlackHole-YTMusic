@@ -26,6 +26,8 @@ import 'package:blackhole/Services/ytmusic/playlist.dart';
 import 'package:hive/hive.dart';
 import 'package:http/http.dart';
 import 'package:logging/logging.dart';
+import 'package:youtube_explode_dart/youtube_explode_dart.dart'
+    show YoutubeExplode, VideoId, AudioOnlyStreamInfo;
 
 class YtMusicService {
   static const ytmDomain = 'music.youtube.com';
@@ -612,21 +614,91 @@ class YtMusicService {
     return days;
   }
 
-  // Public entry point: tries ANDROID_VR InnerTube first (fast, no cipher),
-  // then falls back to youtube_explode_dart if that returns nothing.
+  // Public entry point:
+  //   1. Fetch metadata from InnerTube (title/artist/image — fast)
+  //   2. ALWAYS resolve stream URL via youtube_explode_dart (handles n-param cipher)
+  //   Merging the two gives reliable playback + accurate metadata.
   Future<Map> getSongData({required String videoId}) async {
-    final Map vrResult = await _getSongDataVR(videoId: videoId);
-    if (vrResult.isNotEmpty) return vrResult;
-    Logger.root.warning(
-      'getSongData: ANDROID_VR returned nothing for $videoId, trying explode fallback',
-    );
+    // Metadata pass (InnerTube — non-blocking if it fails)
+    final Map metadata = await _getSongDataVR(videoId: videoId);
+
+    // Stream URL pass — youtube_explode_dart decodes YouTube's n-param
     try {
+      final yt = YoutubeExplode();
+      try {
+        final manifest = await yt
+            .videos.streamsClient
+            .getManifest(VideoId(videoId));
+        final List<AudioOnlyStreamInfo> sorted =
+            manifest.audioOnly.sortByBitrate();
+        if (sorted.isEmpty) {
+          yt.close();
+          return metadata; // no streams from explode, use InnerTube URL as-is
+        }
+        // On Android, m4a (mp4a) is more reliably decoded by ExoPlayer.
+        final List<AudioOnlyStreamInfo> m4a = sorted
+            .where((s) => s.audioCodec.contains('mp4'))
+            .toList();
+        final List<AudioOnlyStreamInfo> chosen =
+            m4a.isNotEmpty ? m4a : sorted;
+        final String lowUrl = chosen.first.url.toString();
+        final String highUrl = chosen.last.url.toString();
+        final String ytQuality = Hive.box('settings')
+            .get('ytQuality', defaultValue: 'Low')
+            .toString();
+        final String finalUrl = ytQuality == 'High' ? highUrl : lowUrl;
+        final String expireAt =
+            RegExp('expire=(.*?)&').firstMatch(finalUrl)?.group(1) ??
+                ((DateTime.now().millisecondsSinceEpoch ~/ 1000) + 3600 * 5)
+                    .toString();
+        yt.close();
+        try {
+          await Hive.box('ytlinkcache').put(videoId, {
+            'url': finalUrl,
+            'expire_at': expireAt,
+            'lowUrl': lowUrl,
+            'highUrl': highUrl,
+          });
+        } catch (_) {}
+        // Use InnerTube metadata if we got it, otherwise minimal map.
+        final Map base = metadata.isNotEmpty
+            ? metadata
+            : {
+                'id': videoId,
+                'title': '',
+                'artist': '',
+                'album': '',
+                'duration': '',
+                'image': '',
+                'images': <String>[],
+                'language': 'YouTube',
+                'genre': 'YouTube',
+                'year': '',
+                '320kbps': 'false',
+                'has_lyrics': 'false',
+                'release_date': '',
+                'album_id': '',
+                'subtitle': '',
+                'perma_url': 'https://youtube.com/watch?v=$videoId',
+              };
+        return {
+          ...base,
+          'url': finalUrl,
+          'lowUrl': lowUrl,
+          'highUrl': highUrl,
+          'expire_at': expireAt,
+        };
+      } catch (e) {
+        yt.close();
+        rethrow;
+      }
+    } catch (e) {
+      Logger.root.severe('getSongData explode url failed for $videoId: $e');
+      // Last resort: InnerTube URL (may 403 on some content)
+      if (metadata.isNotEmpty) return metadata;
       final Map? fallback =
           await YouTubeServices().formatVideoFromId(id: videoId);
       return fallback ?? {};
-    } catch (e) {
-      Logger.root.severe('getSongData explode fallback failed for $videoId', e);
-      return {};
     }
   }
 
@@ -857,7 +929,7 @@ class YtMusicService {
             'sectionListRenderer',
             'contents',
             0,
-            'musicShelfRenderer',
+            'musicPlaylistShelfRenderer',
             'contents'
           ]) as List? ??
           [];
