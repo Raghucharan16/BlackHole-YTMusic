@@ -20,6 +20,7 @@
 import 'dart:convert';
 
 import 'package:blackhole/Helpers/extensions.dart';
+import 'package:blackhole/Services/youtube_services.dart';
 import 'package:blackhole/Services/ytmusic/nav.dart';
 import 'package:blackhole/Services/ytmusic/playlist.dart';
 import 'package:hive/hive.dart';
@@ -611,10 +612,28 @@ class YtMusicService {
     return days;
   }
 
+  // Public entry point: tries ANDROID_VR InnerTube first (fast, no cipher),
+  // then falls back to youtube_explode_dart if that returns nothing.
+  Future<Map> getSongData({required String videoId}) async {
+    final Map vrResult = await _getSongDataVR(videoId: videoId);
+    if (vrResult.isNotEmpty) return vrResult;
+    Logger.root.warning(
+      'getSongData: ANDROID_VR returned nothing for $videoId, trying explode fallback',
+    );
+    try {
+      final Map? fallback =
+          await YouTubeServices().formatVideoFromId(id: videoId);
+      return fallback ?? {};
+    } catch (e) {
+      Logger.root.severe('getSongData explode fallback failed for $videoId', e);
+      return {};
+    }
+  }
+
   // Resolves a playable song via the InnerTube player using the ANDROID_VR
   // client. That client returns direct (un-ciphered, PoToken-free) stream
   // URLs, so no signature deciphering or youtube_explode is required.
-  Future<Map> getSongData({required String videoId}) async {
+  Future<Map> _getSongDataVR({required String videoId}) async {
     const String vrUserAgent =
         'com.google.android.apps.youtube.vr.oculus/1.56.21 '
         '(Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1) gzip';

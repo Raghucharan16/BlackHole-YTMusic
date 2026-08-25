@@ -20,7 +20,7 @@
 import 'package:blackhole/CustomWidgets/on_hover.dart';
 import 'package:blackhole/Screens/YouTube/youtube_playlist.dart';
 import 'package:blackhole/Screens/YouTube/youtube_search.dart';
-import 'package:blackhole/Services/youtube_services.dart';
+import 'package:blackhole/Services/player_service.dart';
 import 'package:blackhole/Services/yt_music.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:carousel_slider/carousel_slider.dart';
@@ -250,19 +250,23 @@ class _YouTubeState extends State<YouTube>
                                     ? '${item["count"]} Tracks | ${item["description"]}'
                                     : '${item["count"]} | ${item["description"]}';
                                 return GestureDetector(
-                                  onTap: () {
-                                    item['type'] == 'video'
-                                        ? Navigator.push(
-                                            context,
-                                            PageRouteBuilder(
-                                              opaque: false,
-                                              pageBuilder: (_, __, ___) =>
-                                                  YouTubeSearchPage(
-                                                query: item['title'].toString(),
-                                              ),
-                                            ),
-                                          )
-                                        : Navigator.push(
+                                  onTap: () async {
+                                    if (item['type'] == 'video') {
+                                      final Map response =
+                                          await YtMusicService().getSongData(
+                                        videoId: item['videoId'].toString(),
+                                      );
+                                      if (!context.mounted) return;
+                                      if (response.isNotEmpty) {
+                                        PlayerInvoke.init(
+                                          songsList: [response],
+                                          index: 0,
+                                          isOffline: false,
+                                        );
+                                        Navigator.pushNamed(context, '/player');
+                                      }
+                                    } else {
+                                    Navigator.push(
                                             context,
                                             PageRouteBuilder(
                                               opaque: false,
@@ -287,6 +291,7 @@ class _YouTubeState extends State<YouTube>
                                               ),
                                             ),
                                           );
+                                    }
                                   },
                                   child: SizedBox(
                                     width: item['type'] != 'playlist'
@@ -523,6 +528,323 @@ class _YouTubeState extends State<YouTube>
                 ),
               ),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Shelf-only home feed widget for embedding in the Home tab.
+/// Shares the same cached globals as [YouTube] so the two never double-fetch.
+class YtMusicHomeFeed extends StatefulWidget {
+  const YtMusicHomeFeed({super.key});
+  @override
+  _YtMusicHomeFeedState createState() => _YtMusicHomeFeedState();
+}
+
+class _YtMusicHomeFeedState extends State<YtMusicHomeFeed>
+    with AutomaticKeepAliveClientMixin<YtMusicHomeFeed> {
+  @override
+  bool get wantKeepAlive => true;
+
+  @override
+  void initState() {
+    super.initState();
+    if (!status) {
+      YtMusicService().getMusicHome().then((value) {
+        status = true;
+        if (!mounted) return;
+        if (value.isNotEmpty) {
+          setState(() {
+            searchedList = value['body'] ?? [];
+            headList = value['head'] ?? [];
+            Hive.box('cache').put('ytHome', value['body']);
+            Hive.box('cache').put('ytHomeHead', value['head']);
+          });
+        } else {
+          status = false;
+          setState(() {});
+        }
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+    final double screenWidth = MediaQuery.of(context).size.width;
+    final bool rotated = MediaQuery.of(context).size.height < screenWidth;
+    double boxSize = !rotated
+        ? MediaQuery.of(context).size.width / 2
+        : MediaQuery.of(context).size.height / 2.5;
+    if (boxSize > 250) boxSize = 250;
+
+    if (searchedList.isEmpty) {
+      return Center(
+        child: YtMusicService.lastHomeDiag.isEmpty
+            ? const CircularProgressIndicator()
+            : Padding(
+                padding: const EdgeInsets.all(24.0),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text('YouTube Music home failed to load'),
+                    const SizedBox(height: 8),
+                    Text(
+                      YtMusicService.lastHomeDiag,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                    const SizedBox(height: 16),
+                    ElevatedButton(
+                      onPressed: () {
+                        status = false;
+                        setState(() {});
+                        YtMusicService().getMusicHome().then((value) {
+                          status = true;
+                          if (!mounted) return;
+                          setState(() {
+                            if (value.isNotEmpty) {
+                              searchedList = value['body'] ?? [];
+                              headList = value['head'] ?? [];
+                            }
+                          });
+                        });
+                      },
+                      child: const Text('Retry'),
+                    ),
+                  ],
+                ),
+              ),
+      );
+    }
+
+    return SingleChildScrollView(
+      physics: const BouncingScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(10, 10, 10, 0),
+      child: Column(
+        children: [
+          if (headList.isNotEmpty)
+            CarouselSlider.builder(
+              itemCount: headList.length,
+              options: CarouselOptions(
+                height: boxSize + 20,
+                viewportFraction: rotated ? 0.36 : 1.0,
+                autoPlay: true,
+                enlargeCenterPage: true,
+              ),
+              itemBuilder:
+                  (BuildContext context, int index, int pageViewIndex) =>
+                      GestureDetector(
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    PageRouteBuilder(
+                      opaque: false,
+                      pageBuilder: (_, __, ___) => YouTubeSearchPage(
+                        query: headList[index]['title'].toString(),
+                      ),
+                    ),
+                  );
+                },
+                child: Card(
+                  elevation: 5,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10.0),
+                  ),
+                  clipBehavior: Clip.antiAlias,
+                  child: CachedNetworkImage(
+                    fit: BoxFit.cover,
+                    errorWidget: (context, _, __) => const Image(
+                      fit: BoxFit.cover,
+                      image: AssetImage('assets/ytCover.png'),
+                    ),
+                    imageUrl: headList[index]['image'].toString(),
+                    placeholder: (context, url) => const Image(
+                      fit: BoxFit.cover,
+                      image: AssetImage('assets/ytCover.png'),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ListView.builder(
+            itemCount: searchedList.length,
+            physics: const BouncingScrollPhysics(),
+            shrinkWrap: true,
+            padding: const EdgeInsets.only(bottom: 10),
+            itemBuilder: (context, index) {
+              return Column(
+                children: [
+                  Row(
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(10, 10, 0, 5),
+                        child: Text(
+                          '${searchedList[index]["title"]}',
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.secondary,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  SizedBox(
+                    height: boxSize + 10,
+                    width: double.infinity,
+                    child: ListView.builder(
+                      physics: const BouncingScrollPhysics(),
+                      scrollDirection: Axis.horizontal,
+                      padding: const EdgeInsets.symmetric(horizontal: 5),
+                      itemCount:
+                          (searchedList[index]['playlists'] as List).length,
+                      itemBuilder: (context, idx) {
+                        final item = searchedList[index]['playlists'][idx];
+                        item['subtitle'] = item['type'] != 'video'
+                            ? '${item["count"]} Tracks | ${item["description"]}'
+                            : '${item["count"]} | ${item["description"]}';
+                        return GestureDetector(
+                          onTap: () async {
+                            if (item['type'] == 'video') {
+                              final Map response =
+                                  await YtMusicService().getSongData(
+                                videoId: item['videoId'].toString(),
+                              );
+                              if (!context.mounted) return;
+                              if (response.isNotEmpty) {
+                                PlayerInvoke.init(
+                                  songsList: [response],
+                                  index: 0,
+                                  isOffline: false,
+                                );
+                                Navigator.pushNamed(context, '/player');
+                              }
+                            } else {
+                              Navigator.push(
+                                context,
+                                PageRouteBuilder(
+                                  opaque: false,
+                                  pageBuilder: (_, __, ___) => YouTubePlaylist(
+                                    playlistId: item['playlistId'].toString(),
+                                    type: (item['type'] == 'album' ||
+                                            item['type'] == 'artist')
+                                        ? item['type'].toString()
+                                        : 'playlist',
+                                  ),
+                                ),
+                              );
+                            }
+                          },
+                          child: SizedBox(
+                            width: item['type'] != 'playlist'
+                                ? (boxSize - 30) * (16 / 9)
+                                : boxSize - 30,
+                            child: HoverBox(
+                              child: Column(
+                                children: [
+                                  Expanded(
+                                    child: Stack(
+                                      children: [
+                                        Positioned.fill(
+                                          child: Card(
+                                            elevation: 5,
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(10.0),
+                                            ),
+                                            clipBehavior: Clip.antiAlias,
+                                            child: CachedNetworkImage(
+                                              fit: BoxFit.cover,
+                                              errorWidget:
+                                                  (context, _, __) => Image(
+                                                fit: BoxFit.cover,
+                                                image: item['type'] != 'playlist'
+                                                    ? const AssetImage(
+                                                        'assets/ytCover.png',
+                                                      )
+                                                    : const AssetImage(
+                                                        'assets/cover.jpg',
+                                                      ),
+                                              ),
+                                              imageUrl:
+                                                  item['image'].toString(),
+                                              placeholder: (context, url) =>
+                                                  Image(
+                                                fit: BoxFit.cover,
+                                                image: item['type'] != 'playlist'
+                                                    ? const AssetImage(
+                                                        'assets/ytCover.png',
+                                                      )
+                                                    : const AssetImage(
+                                                        'assets/cover.jpg',
+                                                      ),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 10.0,
+                                    ),
+                                    child: Column(
+                                      children: [
+                                        Text(
+                                          '${item["title"]}',
+                                          textAlign: TextAlign.center,
+                                          softWrap: false,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                        Text(
+                                          item['subtitle'].toString(),
+                                          textAlign: TextAlign.center,
+                                          softWrap: false,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            color: Theme.of(context)
+                                                .textTheme
+                                                .bodySmall!
+                                                .color,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 5.0),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              builder: ({
+                                required BuildContext context,
+                                required bool isHover,
+                                Widget? child,
+                              }) {
+                                return Card(
+                                  color:
+                                      isHover ? null : Colors.transparent,
+                                  elevation: 0,
+                                  margin: EdgeInsets.zero,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(10.0),
+                                  ),
+                                  clipBehavior: Clip.antiAlias,
+                                  child: child,
+                                );
+                              },
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              );
+            },
           ),
         ],
       ),

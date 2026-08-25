@@ -24,7 +24,6 @@ import 'package:blackhole/CustomWidgets/miniplayer.dart';
 import 'package:blackhole/CustomWidgets/playlist_popupmenu.dart';
 import 'package:blackhole/CustomWidgets/song_tile_trailing_menu.dart';
 import 'package:blackhole/Services/player_service.dart';
-import 'package:blackhole/Services/youtube_services.dart';
 import 'package:blackhole/Services/yt_music.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
@@ -169,13 +168,11 @@ class _YouTubePlaylistState extends State<YouTubePlaylist> {
                           done = false;
                         });
 
-                        final Map? response =
-                            await YouTubeServices().formatVideoFromId(
-                          id: searchedList.first['id'].toString(),
-                          data: searchedList.first,
+                        final Map response = await YtMusicService().getSongData(
+                          videoId: searchedList.first['id'].toString(),
                         );
                         final List<Map> playList = List.from(searchedList);
-                        playList[0] = response!;
+                        if (response.isNotEmpty) playList[0] = response;
                         setState(() {
                           done = true;
                         });
@@ -193,12 +190,10 @@ class _YouTubePlaylistState extends State<YouTubePlaylist> {
                         });
                         final List<Map> playList = List.from(searchedList);
                         playList.shuffle();
-                        final Map? response =
-                            await YouTubeServices().formatVideoFromId(
-                          id: playList.first['id'].toString(),
-                          data: playList.first,
+                        final Map response = await YtMusicService().getSongData(
+                          videoId: playList.first['id'].toString(),
                         );
-                        playList[0] = response!;
+                        if (response.isNotEmpty) playList[0] = response;
                         setState(() {
                           done = true;
                         });
@@ -295,21 +290,21 @@ class _YouTubePlaylistState extends State<YouTubePlaylist> {
                                       setState(() {
                                         done = false;
                                       });
-                                      final Map? response =
-                                          await YouTubeServices()
-                                              .formatVideoFromId(
-                                        id: entry['id'].toString(),
-                                        data: entry,
+                                      final Map response =
+                                          await YtMusicService().getSongData(
+                                        videoId: entry['id'].toString(),
                                       );
                                       setState(() {
                                         done = true;
                                       });
-                                      PlayerInvoke.init(
-                                        songsList: [response],
-                                        index: 0,
-                                        isOffline: false,
-                                      );
-                                      Navigator.pushNamed(context, '/player');
+                                      if (response.isNotEmpty) {
+                                        PlayerInvoke.init(
+                                          songsList: [response],
+                                          index: 0,
+                                          isOffline: false,
+                                        );
+                                        Navigator.pushNamed(context, '/player');
+                                      }
                                       // for (var i = 0;
                                       //     i < searchedList.length;
                                       //     i++) {

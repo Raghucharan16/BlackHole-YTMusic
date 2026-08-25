@@ -23,7 +23,6 @@ import 'package:blackhole/CustomWidgets/gradient_containers.dart';
 import 'package:blackhole/CustomWidgets/miniplayer.dart';
 import 'package:blackhole/CustomWidgets/song_tile_trailing_menu.dart';
 import 'package:blackhole/Services/player_service.dart';
-import 'package:blackhole/Services/youtube_services.dart';
 import 'package:blackhole/Services/yt_music.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
@@ -184,32 +183,21 @@ class _YouTubeArtistState extends State<YouTubeArtist> {
                                       setState(() {
                                         done = false;
                                       });
-                                      final Map? response =
-                                          await YouTubeServices()
-                                              .formatVideoFromId(
-                                        id: entry['id'].toString(),
-                                        data: entry,
-                                      );
-
-                                      final Map response2 =
+                                      final Map response =
                                           await YtMusicService().getSongData(
                                         videoId: entry['id'].toString(),
                                       );
-                                      if (response != null &&
-                                          response2['image'] != null) {
-                                        response['image'] =
-                                            response2['image'] ??
-                                                response['image'];
-                                      }
                                       setState(() {
                                         done = true;
                                       });
-                                      PlayerInvoke.init(
-                                        songsList: [response],
-                                        index: 0,
-                                        isOffline: false,
-                                      );
-                                      Navigator.pushNamed(context, '/player');
+                                      if (response.isNotEmpty) {
+                                        PlayerInvoke.init(
+                                          songsList: [response],
+                                          index: 0,
+                                          isOffline: false,
+                                        );
+                                        Navigator.pushNamed(context, '/player');
+                                      }
                                       // for (var i = 0;
                                       //     i < searchedList.length;
                                       //     i++) {

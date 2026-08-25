@@ -60,8 +60,8 @@ jobs:
           body: |
             Automated release build.
 
-            Spotify support removed; music search/streaming is powered by
-            JioSaavn and YouTube / YouTube Music.
+            Backend: YouTube Music via InnerTube (ANDROID_VR client with
+            youtube_explode_dart fallback). JioSaavn/Saavn removed.
 
             APK is signed with the debug key (no release keystore configured),
             so it is installable for personal use.

@@ -343,44 +343,24 @@ class AudioPlayerHandlerImpl extends BaseAudioHandler
   Future<void> refreshLink(Map newData) async {
     Logger.root.info('player | received new link for ${newData['title']}');
     final MediaItem newItem = MediaItemConverter.mapToMediaItem(newData);
-    // final String? boxName = mediaItem.extras!['playlistBox']?.toString();
-    // if (boxName != null) {
-    //   Logger.root.info('linked with playlist $boxName');
-    //   if (Hive.box(mediaItem.extras!['playlistBox'].toString())
-    //       .containsKey(mediaItem.id)) {
-    //     Logger.root.info('updating item in playlist $boxName');
-    //     Hive.box(mediaItem.extras!['playlistBox'].toString()).put(
-    //       mediaItem.id,
-    //       MediaItemConverter.mediaItemToMap(newItem),
-    //     );
-    //     // put(
-    //     //   mediaItem.id,
-    //     //   MediaItemConverter.mediaItemToMap(newItem),
-    //     // );
-    //   }
-    // }
-    // Logger.root.info('player | inserting refreshed item');
-    // late AudioSource audioSource;
-    // if (cacheSong) {
-    //   audioSource = LockCachingAudioSource(
-    //     Uri.parse(
-    //       newItem.extras!['url'].toString(),
-    //     ),
-    //   );
-    // } else {
-    //   audioSource = AudioSource.uri(
-    //     Uri.parse(
-    //       newItem.extras!['url'].toString(),
-    //     ),
-    //   );
-    // }
-    // final index = queue.value.indexWhere((item) => item.id == newItem.id);
-    // _mediaItemExpando[audioSource] = newItem;
-    // _playlist
-    // .removeAt(index)
-    // .then((value) =>
-    // _playlist.insert(index, audioSource));
-    addQueueItem(newItem);
+    final int index = queue.value.indexWhere((item) => item.id == newItem.id);
+    if (index == -1) {
+      addQueueItem(newItem);
+      return;
+    }
+    late AudioSource audioSource;
+    if (cacheSong) {
+      audioSource = LockCachingAudioSource(
+        Uri.parse(newItem.extras!['url'].toString()),
+      );
+    } else {
+      audioSource = AudioSource.uri(
+        Uri.parse(newItem.extras!['url'].toString()),
+      );
+    }
+    _mediaItemExpando[audioSource] = newItem;
+    await _playlist.removeAt(index);
+    await _playlist.insert(index, audioSource);
   }
 
   AudioSource? _itemToSource(MediaItem mediaItem) {

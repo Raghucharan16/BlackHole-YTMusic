@@ -29,11 +29,10 @@ import 'package:blackhole/Helpers/backup_restore.dart';
 import 'package:blackhole/Helpers/downloads_checker.dart';
 import 'package:blackhole/Helpers/github.dart';
 import 'package:blackhole/Helpers/update.dart';
-import 'package:blackhole/Screens/Home/saavn.dart';
+import 'package:blackhole/Screens/YouTube/youtube_search.dart';
 import 'package:blackhole/Screens/Library/library.dart';
 import 'package:blackhole/Screens/LocalMusic/downed_songs.dart';
 import 'package:blackhole/Screens/LocalMusic/downed_songs_desktop.dart';
-import 'package:blackhole/Screens/Search/search.dart';
 import 'package:blackhole/Screens/Settings/new_settings_page.dart';
 import 'package:blackhole/Screens/YouTube/youtube_home.dart';
 import 'package:blackhole/Services/ext_storage_provider.dart';
@@ -806,9 +805,8 @@ class _HomePageState extends State<HomePage> {
                                                   context,
                                                   MaterialPageRoute(
                                                     builder: (context) =>
-                                                        const SearchPage(
+                                                        const YouTubeSearchPage(
                                                       query: '',
-                                                      fromHome: true,
                                                       autofocus: true,
                                                     ),
                                                   ),
@@ -820,7 +818,7 @@ class _HomePageState extends State<HomePage> {
                                       ),
                                     ];
                                   },
-                                  body: SaavnHomePage(),
+                                  body: const YtMusicHomeFeed(),
                                 ),
                                 if (!rotated)
                                   Builder(

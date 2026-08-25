@@ -588,25 +588,21 @@ class _YouTubeSearchPageState extends State<YouTubeSearchPage> {
                                                                 setState(() {
                                                                   done = false;
                                                                 });
-                                                                final Map?
+                                                                final Map
                                                                     response =
-                                                                    await YouTubeServices()
-                                                                        .formatVideoFromId(
-                                                                  id: section['items']
+                                                                    await YtMusicService()
+                                                                        .getSongData(
+                                                                  videoId: section['items']
                                                                               [
                                                                               idx]
                                                                           ['id']
                                                                       .toString(),
-                                                                  data: section[
-                                                                          'items']
-                                                                      [
-                                                                      idx] as Map,
                                                                 );
                                                                 setState(() {
                                                                   done = true;
                                                                 });
-                                                                if (response !=
-                                                                    null) {
+                                                                if (response
+                                                                    .isNotEmpty) {
                                                                   PlayerInvoke
                                                                       .init(
                                                                     songsList: [
@@ -616,21 +612,21 @@ class _YouTubeSearchPageState extends State<YouTubeSearchPage> {
                                                                     isOffline:
                                                                         false,
                                                                   );
+                                                                  Navigator
+                                                                      .pushNamed(
+                                                                    context,
+                                                                    '/player',
+                                                                  );
+                                                                } else {
+                                                                  ShowSnackBar()
+                                                                      .showSnackBar(
+                                                                    context,
+                                                                    AppLocalizations.of(
+                                                                      context,
+                                                                    )!
+                                                                        .ytLiveAlert,
+                                                                  );
                                                                 }
-                                                                response == null
-                                                                    ? ShowSnackBar()
-                                                                        .showSnackBar(
-                                                                        context,
-                                                                        AppLocalizations.of(
-                                                                          context,
-                                                                        )!
-                                                                            .ytLiveAlert,
-                                                                      )
-                                                                    : Navigator
-                                                                        .pushNamed(
-                                                                        context,
-                                                                        '/player',
-                                                                      );
                                                               }
                                                             },
                                                           );
