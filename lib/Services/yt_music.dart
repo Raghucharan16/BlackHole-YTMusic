@@ -675,7 +675,11 @@ class YtMusicService {
       final manifest = await YouTubeServices.yt.videos.streamsClient
           .getManifest(
             VideoId(videoId),
-            ytClients: [YoutubeApiClient.tv, YoutubeApiClient.androidVr],
+            ytClients: [
+              YoutubeApiClient.visionOs,  // primary bypass — no n-param cipher
+              YoutubeApiClient.androidVr, // fallback
+              YoutubeApiClient.tv,        // last resort
+            ],
           )
           .timeout(const Duration(seconds: 20));
 
