@@ -558,7 +558,14 @@ class YouTubeServices {
     // {bool preferM4a = true}
   ) async {
     final StreamManifest manifest = await yt.videos.streamsClient
-        .getManifest(video.id)
+        .getManifest(
+          video.id,
+          // tv and androidVr clients bypass YouTube's n-param cipher entirely.
+          // The default Android client uses an embedded JSEngine to decode the
+          // n-param, but YouTube's current obfuscation breaks it — causing the
+          // CDN to throttle after the initial 5-10 s burst and go silent.
+          ytClients: [YoutubeApiClient.tv, YoutubeApiClient.androidVr],
+        )
         .timeout(const Duration(seconds: 20));
     final List<AudioOnlyStreamInfo> sortedStreamInfo =
         manifest.audioOnly.sortByBitrate();

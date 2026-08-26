@@ -673,7 +673,10 @@ class YtMusicService {
     //    cached player JS after first call).
     try {
       final manifest = await YouTubeServices.yt.videos.streamsClient
-          .getManifest(VideoId(videoId))
+          .getManifest(
+            VideoId(videoId),
+            ytClients: [YoutubeApiClient.tv, YoutubeApiClient.androidVr],
+          )
           .timeout(const Duration(seconds: 20));
 
       final List<AudioOnlyStreamInfo> sorted =
