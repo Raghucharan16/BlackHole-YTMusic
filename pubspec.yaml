@@ -59,10 +59,10 @@ dependencies:
   sliding_up_panel: ^2.0.0+1
   url_launcher: ^6.1.11
   uuid: ^3.0.7
-  # 3.1.0 adds YoutubeApiClient.visionOs (Apple Vision Pro / Android VR clients)
-  # which bypass YouTube's n-param cipher entirely — fixes the "5-10 s buffer
-  # then silence" issue caused by the broken JSEngine in 2.x.
-  youtube_explode_dart: ^3.1.0
+  # TV_EMBEDDED InnerTube client is now the primary stream URL path (no n-param),
+  # so we no longer depend on youtube_explode_dart's JSEngine for cipher decoding.
+  # 2.5.3 is kept for fallback getManifest() with tv/androidVr bypass clients.
+  youtube_explode_dart: ^2.5.3
 
 dev_dependencies:
   flutter_test:

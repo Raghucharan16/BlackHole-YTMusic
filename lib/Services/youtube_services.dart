@@ -564,11 +564,7 @@ class YouTubeServices {
           // The default Android client uses an embedded JSEngine to decode the
           // n-param, but YouTube's current obfuscation breaks it — causing the
           // CDN to throttle after the initial 5-10 s burst and go silent.
-          ytClients: [
-            YoutubeApiClient.visionOs,  // primary bypass — no n-param cipher
-            YoutubeApiClient.androidVr, // fallback
-            YoutubeApiClient.tv,        // last resort
-          ],
+          ytClients: [YoutubeApiClient.tv, YoutubeApiClient.androidVr],
         )
         .timeout(const Duration(seconds: 20));
     final List<AudioOnlyStreamInfo> sortedStreamInfo =

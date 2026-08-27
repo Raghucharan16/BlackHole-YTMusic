@@ -615,13 +615,11 @@ class YtMusicService {
 
   // Resolves a playable stream URL + metadata for a YouTube videoId.
   //
-  // Fast path: ytlinkcache hit → instant.
-  // Main path: youtube_explode_dart getManifest (20 s timeout) — handles
-  //   YouTube's n-param cipher decoding which raw InnerTube URLs skip.
-  //   The static YoutubeExplode singleton in YouTubeServices caches the
-  //   player JS so only the FIRST call on a session is slow (~500 KB fetch).
-  // Fallback: InnerTube URL from ANDROID_VR/ANDROID/iOS client (may 403 on
-  //   some content, but better than returning empty).
+  // Fast path : ytlinkcache hit → instant.
+  // Primary   : TVHTML5_SIMPLY_EMBEDDED_PLAYER (TV_EMBEDDED) InnerTube client.
+  //             Confirmed in 2025 to return CDN URLs with NO n-param throttling.
+  //             No youtube_explode_dart JS solver needed.
+  // Fallback  : youtube_explode_dart getManifest with tv/androidVr clients.
   Future<Map> getSongData({required String videoId}) async {
     // 1. Cache fast-path
     try {
@@ -632,7 +630,6 @@ class YtMusicService {
             int.parse(cached['expire_at'].toString());
         if ((DateTime.now().millisecondsSinceEpoch ~/ 1000) + 350 <
             cachedExpireAt) {
-          // Still fresh — return cache URL merged with any InnerTube metadata.
           final Map meta = await _getSongDataVR(videoId: videoId);
           final Map base = meta.isNotEmpty
               ? meta
@@ -665,21 +662,33 @@ class YtMusicService {
       }
     } catch (_) {}
 
-    // 2. Get InnerTube metadata in parallel with stream URL resolution.
-    //    (metadata is fast; stream URL may be slow first call)
+    // 2. Primary: TV_EMBEDDED client — no n-param throttling.
+    //    Run metadata fetch in parallel so UI renders quickly.
     final Future<Map> metaFuture = _getSongDataVR(videoId: videoId);
+    try {
+      final Map tvResult = await _playerRequest(
+        videoId: videoId,
+        clientName: 'TVHTML5_SIMPLY_EMBEDDED_PLAYER',
+        clientVersion: '2.0',
+        clientNumericId: '85',
+        userAgent:
+            'Mozilla/5.0 (SMART-TV; Linux; Tizen 6.0) AppleWebKit/538.1 (KHTML, like Gecko) Version/6.0 TV Safari/538.1',
+        embedUrl: 'https://www.youtube.com',
+      ).timeout(const Duration(seconds: 15));
+      if (tvResult.isNotEmpty) {
+        final Map meta = await metaFuture;
+        return meta.isNotEmpty ? {...tvResult, ...meta, 'url': tvResult['url'], 'lowUrl': tvResult['lowUrl'], 'highUrl': tvResult['highUrl'], 'expire_at': tvResult['expire_at']} : tvResult;
+      }
+    } catch (e) {
+      Logger.root.warning('getSongData TV_EMBEDDED failed for $videoId: $e');
+    }
 
-    // 3. Stream URL via youtube_explode_dart (singleton yt instance,
-    //    cached player JS after first call).
+    // 3. Fallback: youtube_explode_dart with tv/androidVr clients.
     try {
       final manifest = await YouTubeServices.yt.videos.streamsClient
           .getManifest(
             VideoId(videoId),
-            ytClients: [
-              YoutubeApiClient.visionOs,  // primary bypass — no n-param cipher
-              YoutubeApiClient.androidVr, // fallback
-              YoutubeApiClient.tv,        // last resort
-            ],
+            ytClients: [YoutubeApiClient.tv, YoutubeApiClient.androidVr],
           )
           .timeout(const Duration(seconds: 20));
 
@@ -784,12 +793,14 @@ class YtMusicService {
 
   // Shared InnerTube /player request. Returns a song map on success, {} on
   // any failure (non-200, no direct URLs, exception).
+  // embedUrl: pass for TVHTML5_SIMPLY_EMBEDDED_PLAYER (TV_EMBEDDED client).
   Future<Map> _playerRequest({
     required String videoId,
     required String clientName,
     required String clientVersion,
     required String clientNumericId,
     required String userAgent,
+    String? embedUrl,
   }) async {
     try {
       if (headers == null) await init();
@@ -808,6 +819,7 @@ class YtMusicService {
             'gl': 'US',
             if (visitorData.isNotEmpty) 'visitorData': visitorData,
           },
+          if (embedUrl != null) 'thirdParty': {'embedUrl': embedUrl},
         },
         'videoId': videoId,
         'contentCheckOk': true,
