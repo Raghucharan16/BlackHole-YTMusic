@@ -553,17 +553,82 @@ class YouTubeServices {
     // }
   }
 
+  // TV_EMBEDDED (TVHTML5_SIMPLY_EMBEDDED_PLAYER, clientId 85) returns CDN URLs
+  // that are NOT subject to YouTube's n-param throttling.
+  // Used as the primary path in getUri() before falling back to getManifest().
+  static Future<List<String>> _getTVEmbeddedUrls(String videoId) async {
+    final response = await post(
+      Uri.https(
+        'www.youtube.com',
+        '/youtubei/v1/player',
+        {'prettyPrint': 'false'},
+      ),
+      headers: {
+        'Content-Type': 'application/json',
+        'User-Agent':
+            'Mozilla/5.0 (SMART-TV; Linux; Tizen 6.0) AppleWebKit/538.1 (KHTML, like Gecko) Version/6.0 TV Safari/538.1',
+        'X-YouTube-Client-Name': '85',
+        'X-YouTube-Client-Version': '2.0',
+      },
+      body: jsonEncode({
+        'videoId': videoId,
+        'context': {
+          'client': {
+            'clientName': 'TVHTML5_SIMPLY_EMBEDDED_PLAYER',
+            'clientVersion': '2.0',
+            'hl': 'en',
+            'gl': 'US',
+          },
+          'thirdParty': {'embedUrl': 'https://www.youtube.com'},
+        },
+        'contentCheckOk': true,
+        'racyCheckOk': true,
+      }),
+    );
+    if (response.statusCode != 200) return [];
+    final Map data = json.decode(response.body) as Map;
+    final List formats = [
+      ...(data['streamingData']?['adaptiveFormats'] as List? ?? []),
+    ];
+    final List audioFormats = formats
+        .where(
+          (e) =>
+              e['url'] != null &&
+              e['bitrate'] != null &&
+              (e['mimeType'] as String).startsWith('audio'),
+        )
+        .toList();
+    if (audioFormats.isEmpty) return [];
+    audioFormats.sort(
+      (a, b) => (a['bitrate'] as int).compareTo(b['bitrate'] as int),
+    );
+    return [
+      audioFormats.first['url'].toString(),
+      audioFormats.last['url'].toString(),
+    ];
+  }
+
   Future<List<String>> getUri(
     Video video,
     // {bool preferM4a = true}
   ) async {
+    // Primary: TV_EMBEDDED — no n-param throttling.
+    try {
+      final List<String> tvUrls =
+          await _getTVEmbeddedUrls(video.id.value)
+              .timeout(const Duration(seconds: 15));
+      if (tvUrls.isNotEmpty) {
+        Logger.root.info('getUri TV_EMBEDDED succeeded for ${video.id.value}');
+        return tvUrls;
+      }
+    } catch (e) {
+      Logger.root.warning('getUri TV_EMBEDDED failed for ${video.id.value}: $e');
+    }
+
+    // Fallback: youtube_explode_dart with bypass clients.
     final StreamManifest manifest = await yt.videos.streamsClient
         .getManifest(
           video.id,
-          // tv and androidVr clients bypass YouTube's n-param cipher entirely.
-          // The default Android client uses an embedded JSEngine to decode the
-          // n-param, but YouTube's current obfuscation breaks it — causing the
-          // CDN to throttle after the initial 5-10 s burst and go silent.
           ytClients: [YoutubeApiClient.tv, YoutubeApiClient.androidVr],
         )
         .timeout(const Duration(seconds: 20));
